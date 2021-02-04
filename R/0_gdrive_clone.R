@@ -23,7 +23,7 @@ library('parallel')
 
 #Define google folder of interest 
 #  (https://drive.google.com/drive/folders/[gdrive_id])
-gdrive_id<-'0B05QBBxKRaVFbG1UZjRkbEl4WDQ'
+gdrive_id<-'1JF5ug6B4QIiIDnxne8Rcaz_pq5V5ecvg'
 
 #Initiate connection with gdrive
 drive_find(n_max = 2)
@@ -41,40 +41,37 @@ n_folders<-drive_ls(
   recursive = T) %>% 
   nrow()
 
-#Define google drive folders
-files<-drive_ls(
-  path = as_id(gdrive_id), 
-  type='folder')
+#Create function to identify files and create path name recursively
+file_ls<-function(gid){
+  #Define google drive folders
+  drive_ls(
+    path = as_id(gid), 
+    type='folder', 
+    recursive  = TRUE) %>% 
+    #Add local folder name
+    mutate(local_name = paste0("data//",name))
+}
 
-#Add local folder name
-files<-files %>% 
-  mutate(local_name = paste0("data//",name))
+#Start files list
+files<-file_ls(gdrive_id)
 
-#Define counter
-n<-1
-
-#Use while loop find all folders imbedded in directory
-while(n<=n_folders){
-  #Identify subfolders
-  temp<-drive_ls(
-    path = as_id(files$id[n]), 
-    type= 'folder')
+#Create while loop to identify embedded folders
+i<-1
+n<-nrow(files)
+while(i<=n){
+  #Identify file
+  temp<-file_ls(files$id[i])
   
-  #Add local folder name
-  temp<-temp %>% 
-    mutate(local_name = paste0(files$local_name[n],"//",name))
+  #create local name
+  temp$local_name<-paste0(files$local_name[i],"//", temp$name)
   
-  #bind temp to master file list
-  files<-bind_rows(files, temp)
+  #bind to file
+  files <- bind_rows(files, temp)
   
-  #Remove temp file
-  remove(temp)
-  
-  #Print counter
-  print(paste(round(n/n_folders*100,1), "% Done"))
-  
-  #Add to counter
-  n<-n+1
+  #Add counter
+  n<-nrow(files)
+  i<-i+1
+  print(i)
 }
 
 #Create local copy of folder schema
@@ -87,10 +84,7 @@ files<-
     id = gdrive_id, 
     drive_resource=NA, 
     local_name = "data") %>% 
-  bind_rows(., files)  
-
-#Cleanup env
-remove(n)
+  bind_rows(., files) 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Step 3: Create function to copy files in each folder---------------------------
