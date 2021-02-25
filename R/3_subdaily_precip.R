@@ -1,5 +1,4 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Tile: SCS Curve Number Estimate
 #Name: Precipitation Timeseries Modeling 
 #Coder: C. Nathan Jones
 #Date: 11/20/2016
@@ -7,25 +6,24 @@
 #See http://www.itia.ntua.gr/en/softinfo/3/ for more details
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+#For this script, you MUST load version 3.5 of R: https://cran.r-project.org/bin/windows/base/old/3.5.3/
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Step 1:  Setup Workspace-------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Clear Memory
 rm(list=ls(all=TRUE))
 
-#Set Working Directory
-setwd("M:\\McLaughlin_Lab\\Jones\\workspace\\LWD Flood\\Modeling\\Precip Modeling")
-
 #add appropriate libarary
-library("HyetosMinute")
-library(reshape)
+library(HyetosMinute)
+library(lubridate)
+library(tidyverse)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Step 2:  Format Historic Data--------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 #Download historic data
-df<-read.csv("M:\\McLaughlin_Lab\\Jones\\workspace\\LWD Flood\\Modeling\\Precip Modeling\\Precip_Observed_StREAMLab.csv")
+df<-read.csv("data\\stream_lab_data\\Precip_Observed_StREAMLab.csv")
 df$date_time<-strptime(df$date_time, "%m/%d/%Y %H:%M")
 
 #Create time series to populate
@@ -70,7 +68,7 @@ write.table(df,"HistHourlyData.txt", sep="\t", row.names=F,col.names=F, quote=F)
 #Step 3:  Develop Synthetic Flow Record-----------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Run simulation
-n.years<-10
+n.years<-1000
 SequentialSimul(Length=(365*n.years),
                 BLpar=list(lambda=0.324,
                            phi=0.0318,
@@ -111,4 +109,4 @@ df<-df[order(df$year, df$day, df$variable),]
 colnames(df)<-c("year","day","hour", "precip")
 
 #Export
-write.csv(df, "Precip_Modeled_1000yrs.csv")
+write.csv(df, "data//temp//Precip_Modeled_1000yrs.csv")
