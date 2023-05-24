@@ -2,7 +2,7 @@
 #Title: SCS Curve Number 
 #Coder: C. Nathan Jones
 #Date: 1/8/2014
-#Purpose: Estimate CN for Stroulbes Creek  
+#Purpose: Estimate CN for Stroubles Creek  
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
