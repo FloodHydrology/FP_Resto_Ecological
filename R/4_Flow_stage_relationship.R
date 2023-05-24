@@ -1,112 +1,122 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Name: Flow to stage relationshiop 
 #Coder: Nate Jones (cnjones7@ua.edu)
-#Date: 2/1/2022
-#Purpose: Create script to inundate DEM
+#Date: 5/4/2023
+#Purpose: Create rating curve for reach based on Zhang et al., 2018
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#Semi Code (for each landscape)
-# -Load DEM
-# -Create 10 XS
-# -Describe average stage-area and stage-wp for XS
-# -Guestimate mannings N (maybe using existing stage-discharge relationship?)
-# -estimate stage-discharge based parameteriziation
-
-#Note, snag XS code from TBS work
-# -https://github.com/bamaecohydro/CP_LandUse_Legacies/blob/main/R/0_demo.R
+#This code is roughly based on Zheng et al., 2018
+#     http://doi.org/10.1111/1752-1688.12661
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #Step 1: Setup workspace -------------------------------------------------------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Clear workspace
-remove(list=ls())
+#Clear Memory
+rm(list=ls(all=TRUE))
 
-
-#Load required packages
-library(tidyverse) #join the cult!
+#Download packages
+library(tidyverse)
 library(raster)
-library(sf)
-library(whitebox)
 library(stars)
-library(fasterize)
+library(gstat)
+library(sf)
 library(mapview)
-library(parallel)
 
-#load data of interest
-dem<-raster("data/spatialdata/dem_contemp")
-stream<-st_read("data/spatialdata/centerline.shp")
+#set relevant directories
+dir.create('data//temp')
+temp_dir <- "data//temp//"
+spatial_dir <- "data//spatialdata//"
+
+#download data
+dem_rest <- raster(paste0(spatial_dir, "dem_restored"))
+dem_cont <- raster(paste0(spatial_dir, "dem_contemp"))
+cnt <- st_read(paste0(spatial_dir,"CenterLine.shp"))
+
+#pull in dem inundate result
+df <- read_csv(paste0(temp_dir, "stage_relationships.csv"))
+
+#Plot for funzies
+mapview(dem_rest) + mapview(cnt)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Step 2: XS Analysis ----------------------------------------------------------
+#Step 2: Create stage-flow relationships for each floodplain surface -----------
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#Crop stream layer to dem
-stream<-st_crop(stream, dem)
+#Define centerline length
+cnt<-st_crop(cnt, dem_rest)
+reach_length <- st_length(cnt)
+df$reach_length <- as.numeric(reach_length)
 
-#Define distance between cross sections
-dist<- 10 #m
+#Define reach slope (restored)
+cnt_rest_grd <- rasterize(cnt, dem_rest)
+cnt_rest_grd <- cnt_rest_grd*dem_rest
+slope_rest <- (cellStats(cnt_rest_grd, max, na.rm=T) - cellStats(cnt_rest_grd, min, na.rm=T))/reach_length
 
-#Estimate number of cross sections to create based on distance
-n_points<-sum(st_length(stream))/dist 
-n_points<-n_points %>% as.numeric(.) %>% round()
+#Define reach slope (contemporary)
+cnt_cont_grd <- rasterize(cnt, dem_cont)
+cnt_cont_grd <- cnt_cont_grd*dem_cont
+slope_cont <- (cellStats(cnt_cont_grd, max, na.rm=T) - cellStats(cnt_cont_grd, min, na.rm=T))/reach_length
 
-#Create points along flow lines
-stream_pnts<-st_union(stream)
-stream_pnts<-st_line_merge(stream_pnts)
-stream_pnts<-as_Spatial(stream_pnts, cast=FALSE)
-stream_pnts<-spsample(stream_pnts, n = n_points, type="regular")
-stream_pnts<-st_as_sf(stream_pnts)
+#Define reach slope
+df$slope <- slope_cont #ifelse(df$dem=="rest", slope_rest, slope_cont)
+df$slope <- as.numeric(df$slope)
 
-##################--------------------
-#Start here bozo ---------------------
-##################--------------------
+#Estimate average XS area
+df$A_xs <- df$volume/df$reach_length
+df$A_xs <- as.numeric(df$A_xs)
 
+#Estimate bed area
+df$A_bed <- df$area*(1 + (df$slope)^2)^0.5
 
-xs_fun<-function(n, width=200){
-  #For testing
-  pnt<-stream_pnts[n,]
+#Estiamte wetted perimeter
+df$wetted_perimeter <- df$A_bed/df$reach_length
+
+#Estiamte average top width
+df$width_average <- df$area/df$reach_length
+
+#estimate hydraulic radius
+df$R0 <- df$A_xs/df$wetted_perimeter
+
+#Defiune mannings roughness
+df$n <- 0.035
+
+#Estimate Flow
+df$Q <- (1/df$n)*df$A_xs*((df$R0)^(2/3))*((df$slope)^0.5)
+df$Q <- as.numeric(df$Q)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Step 3: Plot and Export -------------------------------------------------------
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Tidy data
+df <- df %>% 
+  select(relative_ele, Q, dem) %>% 
+  pivot_wider(values_from = Q, names_from = dem) 
+
+#Export
+write_csv(df,paste0(temp_dir, "stage_Q.csv"))
+
+#Plot
+df %>%  
+  #Filter to below 2
+  filter(relative_ele<2) %>% 
+  ggplot() +
+  #add line data
+  geom_line(
+    aes(x=relative_ele, y=rest), 
+    lwd=2, 
+    col="steelblue") +
+  geom_line(
+    aes(x=relative_ele, y=cont), 
+    lwd=2, 
+    col="darkorange") +
+  #Add predefined black/white theme
+  theme_bw() +
+  #Change font size of axes
+  theme(
+    axis.title = element_text(size = 14), 
+    axis.text  = element_text(size = 10)
+  ) + 
+  #Add labels
+  xlab("Stage [m]") + 
+  ylab("Flow [cms]") 
   
-  #Define flowline segment
-  reach<-st_intersection(stream, st_buffer(pnt, dist = 1))
-  reach_backup<-reach
-  
-  #Estimate planar slope
-  reach<-st_coordinates(reach)
-  reach_slope<-(reach[1,"Y"]-reach[nrow(reach),"Y"])/(reach[1,"X"]-reach[nrow(reach),"X"])
-  
-  #Estimate inverse slope
-  xs_slope <- -1/reach_slope
-  
-  #Estimate endpoints of XS
-  xs_coord <- st_coordinates(pnt)
-  xs_coord <-rbind(
-    xs_coord, 
-    matrix(0, nrow=2, ncol=2)
-  )
-  xs_coord[2,"X"] <- xs_coord[1,"X"] + width/2*cos(atan(xs_slope))
-  xs_coord[2,"Y"] <- xs_coord[1,"Y"] + width/2*sin(atan(xs_slope))
-  xs_coord[3,"X"] <- xs_coord[1,"X"] - width/2*cos(atan(xs_slope))
-  xs_coord[3,"Y"] <- xs_coord[1,"Y"] - width/2*sin(atan(xs_slope))
-  xs_coord<-xs_coord[-1,]
-  
-  #Create XS
-  xs<-xs_coord %>%  
-    as_tibble() %>% 
-    st_as_sf(coords = c("X","Y")) %>% 
-    st_coordinates() %>% 
-    st_linestring() %>% 
-    st_sfc(.) %>% 
-    st_set_crs(st_crs(dem@crs)) %>% 
-    st_as_sf() 
-  
-  #Export XS Shape
-  xs
-}
-
-
-#plots for funzies
-plot(dem)
-stream %>% st_geometry() %>% plot(add=T)
-stream_pnts %>% st_geometry() %>% plot(add=T)
-
-
 
